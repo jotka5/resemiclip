@@ -187,6 +187,13 @@ IF [%localChanged%]==[1] (
 set new_version=%version_major%.%version_minor%.%commitCount%%version_modifed%
 
 ::
+:: Release builds pin the version explicitly (the tag name is passed by CI)
+::
+IF NOT [%APP_VERSION_OVERRIDE%]==[] (
+	set new_version=%APP_VERSION_OVERRIDE%
+)
+
+::
 :: Update appversion.h if version has changed or modifications/mixed revisions detected
 ::
 IF NOT "%new_version%"=="%old_version%" goto _update
