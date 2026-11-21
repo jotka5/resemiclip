@@ -22,12 +22,14 @@ jobs:
       solution: 'msvc/resemiclip.sln'
       buildPlatform: 'Win32'
       buildRelease: 'Release'
+      APP_VERSION_OVERRIDE: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
@@ -146,6 +148,7 @@ jobs:
 
     env:
       ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
+      APP_VERSION_OVERRIDE: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
 
     steps:
       - name: Install dependencies
@@ -180,6 +183,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
       - name: GPG Import
         run: |

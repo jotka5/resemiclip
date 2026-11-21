@@ -107,6 +107,12 @@ init()
 	# reports the version it was tagged with instead of the commit count.
 	TAG_VERSION=$(git -C "$GIT_DIR/" describe --tags --exact-match 2>/dev/null)
 
+	# CI checkouts do not always expose tag refs; the workflow passes the tag
+	# name explicitly in that case.
+	if [ -n "$APP_VERSION_OVERRIDE" ]; then
+		TAG_VERSION="$APP_VERSION_OVERRIDE"
+	fi
+
 	if [ -n "$TAG_VERSION" ]; then
 		NEW_VERSION="$TAG_VERSION"
 	else
