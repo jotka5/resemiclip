@@ -103,7 +103,15 @@ init()
 		MODIFIED=+m
 	fi
 
-	NEW_VERSION="$MAJOR.$MINOR.$COMMIT_COUNT$MODIFIED"
+	# Prefer an exact tag for release builds, so a published release always
+	# reports the version it was tagged with instead of the commit count.
+	TAG_VERSION=$(git -C "$GIT_DIR/" describe --tags --exact-match 2>/dev/null)
+
+	if [ -n "$TAG_VERSION" ]; then
+		NEW_VERSION="$TAG_VERSION"
+	else
+		NEW_VERSION="$MAJOR.$MINOR.$COMMIT_COUNT$MODIFIED"
+	fi
 
 	# Update appversion.h if version has changed or modifications/mixed revisions detected
 	if [ "$NEW_VERSION" != "$OLD_VERSION" ]; then

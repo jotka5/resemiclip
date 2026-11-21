@@ -18,6 +18,8 @@ public:
 		cfg_effects = 1;
 		cfg_transparency = 100;
 		cfg_penetfire = 0;
+		cfg_invisible = 1;
+		cfg_debug = 0;
 		cfg_enable = 1;
 	}
 
@@ -31,6 +33,8 @@ public:
 	int GetEffects() const			{ return cfg_effects; }
 	int GetTransparency() const		{ return cfg_transparency; }
 	int GetPenetFire() const		{ return cfg_penetfire; }
+	int GetInvisible() const		{ return cfg_invisible; }
+	int GetDebug() const			{ return cfg_debug; }
 	int GetEnable() const			{ return cfg_enable; }
 
 	void SetCount(float fVal)		{ cfg_count = fVal; }
@@ -41,6 +45,8 @@ public:
 	void SetEffects(int iVal)		{ cfg_effects = iVal; }
 	void SetTransparency(int iVal)	{ cfg_transparency = iVal; }
 	void SetPenetFire(int iVal)		{ cfg_penetfire = iVal; }
+	void SetInvisible(int iVal)		{ cfg_invisible = iVal; }
+	void SetDebug(int iVal)			{ cfg_debug = iVal; }
 	void SetEnable(int iVal)		{ cfg_enable = iVal; }
 
 private:
@@ -53,6 +59,8 @@ private:
 	int cfg_effects;
 	int cfg_transparency;
 	int cfg_penetfire;
+	int cfg_invisible;
+	int cfg_debug;
 	int cfg_enable;
 
 };

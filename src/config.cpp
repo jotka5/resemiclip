@@ -67,6 +67,12 @@ bool CConfig::Parse_Settings(const char *str, const char *value)
 	else if (!strcasecmp(str, "penetfire")) {
 		cfg_penetfire = clamp(i, 0, 1);
 	}
+	else if (!strcasecmp(str, "invisible")) {
+		cfg_invisible = clamp(i, 0, 2);
+	}
+	else if (!strcasecmp(str, "debug")) {
+		cfg_debug = clamp(i, 0, 1);
+	}
 	else
 	{
 		return false;
@@ -93,6 +99,8 @@ void Print_Settings()
 	SEM_PRINT(" effects	%d	- effect of transparency of the player. Depends from distance between players", g_Config.GetEffects());
 	SEM_PRINT(" transparency	%d	- transparency of the player", g_Config.GetTransparency());
 	SEM_PRINT(" penetfire	%d	- Allow fire penetration through transparent the of teammates", g_Config.GetPenetFire());
+	SEM_PRINT(" invisible	%d	- keep invisibility set by other plugins (0 - off, 1 - fully invisible, 2 - any custom render)", g_Config.GetInvisible());
+	SEM_PRINT(" debug		%d	- log follow entity render states to the server console", g_Config.GetDebug());
 }
 
 static int Parse_Config(const char *path)
@@ -214,6 +222,8 @@ int Load_Config()
 	g_Config.SetDistance(160.0f);
 	g_Config.SetTransparency(100);
 	g_Config.SetPenetFire(0);
+	g_Config.SetInvisible(1);
+	g_Config.SetDebug(0);
 
 	return TRUE;
 }

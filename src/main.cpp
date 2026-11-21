@@ -181,6 +181,83 @@ void ClientDisconnect(edict_t *pEdict)
 	SET_META_RESULT(MRES_IGNORED);
 }
 
+static inline bool IsInvisibleState(const entity_state_t *state)
+{
+	const int mode = g_Config.GetInvisible();
+
+	if (mode <= 0) {
+		return false;
+	}
+
+	if (state->effects & EF_NODRAW) {
+		return true;
+	}
+
+	if (mode >= 2) {
+		return state->rendermode != kRenderNormal;
+	}
+
+	if (state->renderamt != 0) {
+		return false;
+	}
+
+	switch (state->rendermode)
+	{
+	case kRenderTransColor:
+	case kRenderTransTexture:
+	case kRenderTransAlpha:
+	case kRenderTransAdd:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static entity_state_t *FindEntityState(packet_entities_t *to, int number)
+{
+	for (int j = 0; j < to->num_entities; j++)
+	{
+		if (to->entities[j].number == number) {
+			return to->entities + j;
+		}
+	}
+
+	return nullptr;
+}
+
+static void DebugFollowState(edict_t *pHost, entity_state_t *state, entity_state_t *aimentState, edict_t *pEnt, int playerIndex, float diff, int alpha, bool applied)
+{
+	static float s_lastLog[4096] = {};
+
+	const int followIndex = state->number;
+
+	if (followIndex <= 0 || followIndex >= (int)(sizeof(s_lastLog) / sizeof(s_lastLog[0]))) {
+		return;
+	}
+
+	const float now = gpGlobals->time;
+
+	if (now - s_lastLog[followIndex] < 0.5f) {
+		return;
+	}
+
+	s_lastLog[followIndex] = now;
+
+	edict_t *pAiment = pEnt->v.aiment;
+	edict_t *pOwner = (pAiment != nullptr) ? pAiment->v.owner : nullptr;
+
+	SEM_PRINT("[SEMICLIP-DBG] host=%d follow=%d aiment=%d owner=%d resolved=%d applied=%d diff=%.1f alpha=%d net_rm=%d net_amt=%d net_fx=%d net_ef=%x net_solid=%d | aiment_net_rm=%d aiment_net_amt=%d | follow_ev rm=%d amt=%.0f fx=%d ef=%x | aiment_ev rm=%d amt=%.0f fx=%d ef=%x | aimowner_ev rm=%d amt=%.0f fx=%d ef=%x",
+		EDICT_NUM(pHost), followIndex,
+		(pAiment != nullptr) ? EDICT_NUM(pAiment) : 0,
+		(pOwner != nullptr) ? EDICT_NUM(pOwner) : 0,
+		playerIndex, applied ? 1 : 0, diff, alpha,
+		state->rendermode, state->renderamt, state->renderfx, state->effects, (int)state->solid,
+		(aimentState != nullptr) ? aimentState->rendermode : -1, (aimentState != nullptr) ? aimentState->renderamt : -1,
+		(int)pEnt->v.rendermode, pEnt->v.renderamt, (int)pEnt->v.renderfx, (int)pEnt->v.effects,
+		(pAiment != nullptr) ? (int)pAiment->v.rendermode : -1, (pAiment != nullptr) ? pAiment->v.renderamt : 0.0f, (pAiment != nullptr) ? (int)pAiment->v.renderfx : -1, (pAiment != nullptr) ? (int)pAiment->v.effects : 0,
+		(pOwner != nullptr) ? (int)pOwner->v.rendermode : -1, (pOwner != nullptr) ? pOwner->v.renderamt : 0.0f, (pOwner != nullptr) ? (int)pOwner->v.renderfx : -1, (pOwner != nullptr) ? (int)pOwner->v.effects : 0);
+}
+
 int SV_CreatePacketEntities(IRehldsHook_SV_CreatePacketEntities *chain, sv_delta_t type, IGameClient *client, packet_entities_t *to, sizebuf_t *msg)
 {
 	edict_t *pHost = client->GetEdict();
@@ -189,36 +266,29 @@ int SV_CreatePacketEntities(IRehldsHook_SV_CreatePacketEntities *chain, sv_delta
 		return chain->callNext(type, client, to, msg);
 	}
 
-	CGamePlayer *pObject = nullptr;
 	CGamePlayer *pPlayer = PLAYER_FOR_EDICT(pHost);
 	CBasePlayer *pl = (CBasePlayer *)GET_PRIVATE(pHost);
+
+	const int maxClients = g_GameData.GetMaxClients();
+	const int transparency = g_Config.GetTransparency();
+	const int effects = g_Config.GetEffects();
+	const bool debug = (g_Config.GetDebug() != 0);
 
 	for (int j = 0; j < to->num_entities; j++)
 	{
 		entity_state_t *state = to->entities + j;
 		int ent = state->number;
 		edict_t *pEnt = EDICT(ent);
+		CGamePlayer *pObject = nullptr;
+		int followAiment = 0;
 
-		if (ent <= g_GameData.GetMaxClients())
+		if (ent <= maxClients)
 		{
 			if (pEnt->v.deadflag != DEAD_NO || pEnt == pHost) {
 				continue;
 			}
 
 			pObject = PLAYER_FOR_EDICT(pEnt);
-
-state_update:
-
-			if (pPlayer->GetSolid(pObject->GetIndex()))
-			{
-				state->solid = SOLID_NOT;
-
-				if (g_Config.GetTransparency())
-				{
-					state->rendermode = kRenderTransAlpha;
-					state->renderamt = g_Config.GetEffects() ? (pPlayer->GetDiff(pObject->GetIndex()) > MIN_AMOUNT) ? pPlayer->GetDiff(pObject->GetIndex()) : MIN_AMOUNT : g_Config.GetTransparency();
-				}
-			}
 		}
 		else
 		{
@@ -233,16 +303,102 @@ state_update:
 				}
 			}
 
-			if (pEnt->v.aiment && pEnt->v.movetype == MOVETYPE_FOLLOW && pEnt->v.aiment != pHost && pEnt->v.rendermode == kRenderNormal)
+			if (pEnt->v.aiment == nullptr
+				|| pEnt->v.movetype != MOVETYPE_FOLLOW
+				|| pEnt->v.aiment == pHost
+				|| pEnt->v.rendermode != kRenderNormal)
 			{
-				int playerIndex = EDICT_NUM(pEnt->v.aiment);
+				continue;
+			}
 
-				if (playerIndex >= 1 && playerIndex <= g_GameData.GetMaxClients())
-				{
-					pObject = PLAYER_FOR_EDICT(pEnt->v.aiment);
-					goto state_update;
+			edict_t *pAiment = pEnt->v.aiment;
+			followAiment = EDICT_NUM(pAiment);
+			int playerIndex = followAiment;
+
+			if (playerIndex < 1 || playerIndex > maxClients)
+			{
+				edict_t *pOwner = pAiment->v.owner;
+
+				if (pOwner != nullptr) {
+					playerIndex = EDICT_NUM(pOwner);
 				}
 			}
+
+			if (playerIndex < 1 || playerIndex > maxClients) {
+				continue;
+			}
+
+			// a follow entity of a dead player should not be touched by semiclip
+			if (EDICT(playerIndex)->v.deadflag != DEAD_NO) {
+				continue;
+			}
+
+			pObject = PLAYER_FOR_NUM(playerIndex - 1);
+		}
+
+		if (pObject == nullptr || !pPlayer->GetSolid(pObject->GetIndex())) {
+			continue;
+		}
+
+		const bool bInvisible = IsInvisibleState(state);
+		const bool bNonPlayer = (ent > maxClients);
+
+		state->solid = SOLID_NOT;
+
+		if (transparency == 0 || bInvisible) {
+			continue;
+		}
+
+		const float diff = pPlayer->GetDiff(pObject->GetIndex());
+		int alpha;
+
+		if (effects) {
+			alpha = (diff > MIN_AMOUNT) ? (int)diff : (int)MIN_AMOUNT;
+		}
+		else {
+			alpha = transparency;
+		}
+
+		// renderamt is transmitted as a single byte; never allow it to wrap to 0
+		if (alpha < 1) {
+			alpha = 1;
+		}
+		else if (alpha > 255) {
+			alpha = 255;
+		}
+
+		// Players are drawn through the player pipeline where kRenderTransAlpha fades smoothly.
+		// Non-player studio models (dance copies, hats) are drawn through the generic model path.
+		state->rendermode = bNonPlayer ? kRenderTransTexture : kRenderTransAlpha;
+		state->renderamt = alpha;
+
+		// GoldSrc draws a follow entity in the transparent pass only when its aiment is ALSO
+		// in the transparent list (see engine r_trans.cpp, R_DrawTEntitiesOnList). Otherwise the
+		// copy is skipped entirely and pops out of existence. Put the aiment there too.
+		entity_state_t *pAimentState = nullptr;
+
+		if (bNonPlayer && followAiment > maxClients && followAiment != ent)
+		{
+			pAimentState = FindEntityState(to, followAiment);
+
+			if (pAimentState != nullptr)
+			{
+				// If the aiment already has a custom render mode it is already in the
+				// transparent list, so leave it untouched. Otherwise make it transparent
+				// with alpha 0: it must be present in the transparent list so the client
+				// draws the follow copy after borrowing its bones, but the aiment itself
+				// must not be rendered (the dance animation model is made of additive
+				// placeholder geometry and would show up as dark boxes).
+				if (pAimentState->rendermode == kRenderNormal)
+				{
+					pAimentState->rendermode = kRenderTransTexture;
+					pAimentState->renderamt = 0;
+				}
+			}
+		}
+
+		if (debug && bNonPlayer) {
+			DebugFollowState(pHost, state, pAimentState, pEnt, pObject->GetIndex(), diff, alpha, true);
 		}
 	}
 

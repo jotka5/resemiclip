@@ -120,6 +120,10 @@ jobs:
           KEY_PFX_PASS: ${{ secrets.KEY_PFX_PASS }}
         # https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md
         run: |
+               if ([string]::IsNullOrEmpty("${{ secrets.KEY_PFX_B64 }}")) {
+                 Write-Host "Signing certificate is not configured, skipping signing."
+                 exit 0
+               }
                $pfxBase64 = "${{ secrets.KEY_PFX_B64 }}"
                [IO.File]::WriteAllBytes("${{ github.workspace }}\signing-cert.pfx", [Convert]::FromBase64String($pfxBase64))
                certutil -f -p "${{ secrets.KEY_PFX_PASS }}" -importPFX "${{ github.workspace }}\signing-cert.pfx"
@@ -179,6 +183,11 @@ jobs:
 
       - name: GPG Import
         run: |
+          if [[ -z "${{ secrets.KEY_ASC }}" ]]; then
+            echo "Signing keys are not configured, skipping GPG import."
+            exit 0
+          fi
+
           echo "${{ secrets.PUB_ASC }}" > "${{ secrets.PUB_ASC_FILE }}"
           echo "${{ secrets.KEY_ASC }}" > "${{ secrets.KEY_ASC_FILE }}"
 
@@ -260,6 +269,10 @@ jobs:
     name: 'Publish'
     runs-on: ubuntu-latest
     needs: [windows, linux]
+    # Automated publishing needs the release signing secrets. Enable it per
+    # repository: Settings -> Secrets and variables -> Actions -> Variables ->
+    # ENABLE_RELEASE_UPLOAD = true
+    if: vars.ENABLE_RELEASE_UPLOAD == 'true'
 
     steps:
       - name: Deploying linux artifacts
@@ -281,6 +294,11 @@ jobs:
         run: |
 
           # new runner, niw signs
+          if [[ -z "${{ secrets.KEY_ASC }}" ]]; then
+            echo "Signing keys are not configured, skipping packaging."
+            exit 1
+          fi
+
           echo "${{ secrets.PUB_ASC }}" > "${{ secrets.PUB_ASC_FILE }}"
           echo "${{ secrets.KEY_ASC }}" > "${{ secrets.KEY_ASC_FILE }}"
           gpg --batch --yes --import "${{ secrets.PUB_ASC_FILE }}"
